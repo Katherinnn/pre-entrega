@@ -1,0 +1,183 @@
+const express = require('express');
+const fs = require('fs');
+const path = require('path');
+const app = express();
+
+app.use(express.json());
+
+const PORT = 8080;
+
+// Archivos donde se almacenarán los productos y los carritos
+const productsFilePath = path.join(__dirname, 'productos.json');
+const cartFilePath = path.join(__dirname, 'carrito.json');
+
+// Crear archivos JSON si no existen
+const initializeFile = (filePath, initialData) => {
+    if (!fs.existsSync(filePath)) {
+        fs.writeFileSync(filePath, JSON.stringify(initialData, null, 2));
+    }
+};
+
+// Inicializar archivos si no existen
+initializeFile(productsFilePath, []);
+initializeFile(cartFilePath, []);
+
+// Funciones para manejar la lectura y escritura en archivos JSON
+const readProducts = () => {
+    const data = fs.readFileSync(productsFilePath);
+    return JSON.parse(data);
+};
+
+const writeProducts = (products) => {
+    fs.writeFileSync(productsFilePath, JSON.stringify(products, null, 2));
+};
+
+const readCarts = () => {
+    const data = fs.readFileSync(cartFilePath);
+    return JSON.parse(data);
+};
+
+const writeCarts = (carts) => {
+    fs.writeFileSync(cartFilePath, JSON.stringify(carts, null, 2));
+};
+
+// Rutas para productos
+
+// GET /api/products (Obtener todos los productos)
+app.get('/api/products', (req, res) => {
+    const { limit } = req.query;
+    let products = readProducts();
+
+    if (limit) {
+        products = products.slice(0, limit);
+    }
+    res.json(products);
+});
+
+// GET /api/products/:pid (Obtener un producto por ID)
+app.get('/api/products/:pid', (req, res) => {
+    const products = readProducts();
+    const product = products.find(p => p.id == req.params.pid);
+
+    if (product) {
+        res.json(product);
+    } else {
+        res.status(404).send('Producto no encontrado');
+    }
+});
+
+// POST /api/products (Agregar un nuevo producto)
+app.post('/api/products', (req, res) => {
+    const products = readProducts();
+    const { title, description, code, price, stock, category, thumbnails = [] } = req.body;
+
+    if (!title || !description || !code || !price || !stock || !category) {
+        return res.status(400).send('Todos los campos son obligatorios, excepto thumbnails');
+    }
+
+    const newProduct = {
+        id: products.length + 1, // ID autogenerado
+        title,
+        description,
+        code,
+        price,
+        status: true, // Status por defecto en true
+        stock,
+        category,
+        thumbnails
+    };
+
+    products.push(newProduct);
+    writeProducts(products);
+    res.status(201).json(newProduct);
+});
+
+// PUT /api/products/:pid (Actualizar un producto por ID)
+app.put('/api/products/:pid', (req, res) => {
+    const products = readProducts();
+    const productIndex = products.findIndex(p => p.id == req.params.pid);
+
+    if (productIndex === -1) {
+        return res.status(404).send('Producto no encontrado');
+    }
+
+    const { id, ...updatedFields } = req.body;
+    products[productIndex] = { ...products[productIndex], ...updatedFields };
+
+    writeProducts(products);
+    res.json(products[productIndex]);
+});
+
+// DELETE /api/products/:pid (Eliminar un producto por ID)
+app.delete('/api/products/:pid', (req, res) => {
+    let products = readProducts();
+    const productIndex = products.findIndex(p => p.id == req.params.pid);
+
+    if (productIndex === -1) {
+        return res.status(404).send('Producto no encontrado');
+    }
+
+    products = products.filter(p => p.id != req.params.pid);
+    writeProducts(products);
+    res.send('Producto eliminado');
+});
+
+// Rutas para carritos
+
+// POST /api/cart (Crear un nuevo carrito)
+app.post('/api/cart', (req, res) => {
+    const carts = readCarts();
+
+    const newCart = {
+        id: carts.length + 1, // ID autogenerado
+        products: []
+    };
+
+    carts.push(newCart);
+    writeCarts(carts);
+    res.status(201).json(newCart);
+});
+
+// GET /api/cart/:cid (Listar productos de un carrito por ID)
+app.get('/api/cart/:cid', (req, res) => {
+    const carts = readCarts();
+    const cart = carts.find(c => c.id == req.params.cid);
+
+    if (cart) {
+        res.json(cart.products);
+    } else {
+        res.status(404).send('Carrito no encontrado');
+    }
+});
+
+// POST /api/cart/:cid/products/:pid (Agregar producto al carrito)
+app.post('/api/cart/:cid/products/:pid', (req, res) => {
+    const carts = readCarts();
+    const products = readProducts();
+    const cart = carts.find(c => c.id == req.params.cid);
+    const product = products.find(p => p.id == req.params.pid);
+
+    if (!cart) {
+        return res.status(404).send('Carrito no encontrado');
+    }
+
+    if (!product) {
+        return res.status(404).send('Producto no encontrado');
+    }
+
+    const existingProduct = cart.products.find(p => p.product == req.params.pid);
+
+    if (existingProduct) {
+        existingProduct.quantity += 1; // Incrementar cantidad si el producto ya existe
+    } else {
+        cart.products.push({ product: req.params.pid, quantity: 1 });
+    }
+
+    writeCarts(carts);
+    res.json(cart);
+});
+
+// Iniciar el servidor
+app.listen(PORT, () => {
+    console.log(Servidor escuchando en el puerto ${PORT});
+});
